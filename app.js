@@ -348,11 +348,19 @@ async function runSoSanhTungTuyen(readyFiles) {
 
   const routeFiles = [];
   for (const f of readyFiles) {
-    const m = f.fileName.match(/Tuy[eếêề]n\s*0*(\d{1,3})/i);
+    // FIX: Normalize Unicode trước khi match regex (xử lý NFD vs NFC)
+    const nameNFC = String(f.fileName).normalize('NFC');
+    const m = nameNFC.match(/Tuy[eếêề]n\s*0*(\d{1,3})/i);
     if (m) {
       routeFiles.push({ fileId: f.fileId, fileName: f.fileName, routeNumber: parseInt(m[1], 10) });
     } else {
-      log('⚠️ Bỏ qua: ' + f.fileName + ' (không có "Tuyến <số>")', 'err');
+      // Fallback: thử tìm số sau chữ "Tuyến" bằng cách linh hoạt hơn (cho trường hợp có ký tự đặc biệt)
+      const m2 = nameNFC.match(/Tuy[eếêề]n\D*?(\d{1,3})/i);
+      if (m2) {
+        routeFiles.push({ fileId: f.fileId, fileName: f.fileName, routeNumber: parseInt(m2[1], 10) });
+      } else {
+        log('⚠️ Bỏ qua: ' + f.fileName + ' (không nhận diện được tuyến)', 'err');
+      }
     }
   }
   if (!routeFiles.length) {
