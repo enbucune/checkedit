@@ -46,7 +46,7 @@ header .sub { font-size: 13px; opacity: .85; }
 .user-name { font-size: 13px; font-weight: 500; }
 
 main {
-  max-width: 1100px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 24px 16px 60px;
   display: flex;
@@ -248,3 +248,48 @@ tr.row-ambiguous td { background: #FFF2CC; }
   .task-grid { grid-template-columns: 1fr; }
   .header-top { flex-direction: column; align-items: flex-start; }
 }
+
+/* ===== Kết quả so sánh (thiết kế lại) ===== */
+.muted { color: #b5bcc8; }
+.ss-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.ss-tab {
+  border: 2px solid #e3e9f2; background: #fff; border-radius: 8px; padding: 8px 14px;
+  font: inherit; font-weight: 600; font-size: 14px; color: #1F3864; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.ss-tab:hover { border-color: #4472C4; }
+.ss-tab.active { background: #1F3864; border-color: #1F3864; color: #fff; }
+.ss-badge { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: #e8f5e9; color: #2e7d32; }
+.ss-badge.bad { background: #ffebee; color: #c62828; }
+.ss-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.ss-search {
+  flex: 1 1 260px; max-width: 360px; padding: 9px 12px; font: inherit; font-size: 14px;
+  border: 1px solid #c9d3e3; border-radius: 8px;
+}
+.ss-search:focus { outline: none; border-color: #4472C4; box-shadow: 0 0 0 3px rgba(68,114,196,.15); }
+.ss-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ss-chip {
+  border: 1px solid #d5dce8; background: #fff; border-radius: 16px; padding: 5px 12px;
+  font: inherit; font-size: 13px; cursor: pointer; color: #333;
+}
+.ss-chip:hover { border-color: #4472C4; }
+.ss-chip.active { background: #4472C4; border-color: #4472C4; color: #fff; }
+.ss-chip b { opacity: .75; margin-left: 2px; }
+.ss-info { font-size: 12px; color: #777; margin: 8px 2px; }
+.ss-wrap { max-height: 72vh; overflow: auto; border: 1px solid #e3e9f2; border-radius: 8px; }
+.ss-table { font-size: 13px; }
+.ss-table th { position: sticky; top: 0; z-index: 1; padding: 10px 8px; text-align: left; }
+.ss-table th.eb { background: #2F5597; }
+.ss-table th.pc { background: #C55A11; }
+.ss-table td { text-align: left; white-space: normal; vertical-align: top; padding: 8px; }
+.ss-table td.nw { white-space: nowrap; }
+.ss-table .sub { display: block; font-size: 11px; color: #7a8394; margin-top: 2px; }
+.ss-table .sub.bad { color: #c62828; font-weight: 600; }
+.ss-table tr.k-ok td:first-child { box-shadow: inset 4px 0 0 #43a047; }
+.ss-table tr.k-warn td:first-child { box-shadow: inset 4px 0 0 #f9a825; }
+.ss-table tr.k-plan td:first-child { box-shadow: inset 4px 0 0 #fb8c00; }
+.ss-table tr.k-nopc td:first-child { box-shadow: inset 4px 0 0 #e53935; }
+.ss-table tr.k-noebms td:first-child { box-shadow: inset 4px 0 0 #fdd835; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: #fff; }
+.t-ok { color: #2e7d32; } .t-warn { color: #b26a00; } .t-plan { color: #d84315; }
+.t-nopc { color: #c62828; } .t-noebms { color: #8d6e00; }
