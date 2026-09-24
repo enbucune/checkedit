@@ -3,8 +3,8 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbyNsgSGcAqHXozITTRJKttO
 
 // ============ STATE ============
 const state = {
-  files: [],           // { fileId, fileName, size, status }
-  lastResult: null,    // dữ liệu kết quả cuối để export CSV
+  files: [],
+  lastResult: null,
   lastType: null
 };
 
@@ -39,6 +39,47 @@ function hideLoading() {
   loading.style.display = 'none';
 }
 
+// ============ JSONP HELPER ============
+// Vì Apps Script không hỗ trợ CORS, ta dùng JSONP: chèn <script src="...&callback=fn">
+// Trình duyệt sẽ gọi callback khi response trả về.
+let _jsonpCounter = 0;
+function jsonpRequest(params, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    timeoutMs = timeoutMs || 120000; // 2 phút cho tác vụ nặng (so sánh EBMS)
+    const cbName = '__jsonp_cb_' + (++_jsonpCounter) + '_' + Date.now();
+    const url = API_URL + '?callback=' + cbName + '&' + params.toString();
+
+    let done = false;
+    const script = document.createElement('script');
+
+    const cleanup = () => {
+      if (done) return;
+      done = true;
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      clearTimeout(timer);
+    };
+
+    window[cbName] = function(data) {
+      cleanup();
+      resolve(data);
+    };
+
+    script.onerror = function() {
+      cleanup();
+      reject(new Error('Không kết nối được API (kiểm tra URL Web App hoặc mạng)'));
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Hết thời gian chờ (' + Math.round(timeoutMs/1000) + 's)'));
+    }, timeoutMs);
+
+    script.src = url;
+    document.body.appendChild(script);
+  });
+}
+
 // ============ UPLOAD ============
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => {
@@ -53,8 +94,8 @@ dropzone.addEventListener('drop', e => {
 });
 fileInput.addEventListener('change', e => handleFiles(e.target.files));
 
-function handleFiles(fileList) {
-  const files = Array.from(fileList).filter(f =>
+function handleFiles(filesInput) {
+  const files = Array.from(filesInput).filter(f =>
     f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls')
   );
   if (!files.length) {
@@ -78,11 +119,7 @@ async function uploadFile(file) {
     params.append('mime', file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     params.append('data', base64);
 
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      body: params
-    });
-    const data = await res.json();
+    const data = await jsonpRequest(params, 60000);
     if (!data.ok) throw new Error(data.error || 'Upload thất bại');
 
     state.files[idx].fileId = data.fileId;
@@ -99,8 +136,7 @@ function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const result = reader.result;
-      const base64 = result.split(',')[1];
+      const base64 = reader.result.split(',')[1];
       resolve(base64);
     };
     reader.onerror = reject;
@@ -140,7 +176,6 @@ function escapeHtml(s) {
   }[c]));
 }
 
-// Xóa danh sách file
 document.getElementById('btnClearFiles').addEventListener('click', () => {
   if (!state.files.length) return;
   if (!confirm('Xóa danh sách file đã upload? File trên Drive vẫn còn.')) return;
@@ -157,7 +192,7 @@ document.querySelectorAll('.task-btn').forEach(btn => {
 async function runTask(action) {
   const readyFiles = state.files.filter(f => f.status === 'done');
   if (!readyFiles.length) {
-    alert('⚠️ Chưa có file nào được upload thành công. Kéo thả file Excel vào khung trước.');
+    alert('⚠️ Chưa có file nào được upload thành công.');
     return;
   }
 
@@ -175,8 +210,7 @@ async function runTask(action) {
     params.append('action', action);
     params.append('fileIds', JSON.stringify(readyFiles.map(f => f.fileId)));
 
-    const res = await fetch(API_URL, { method: 'POST', body: params });
-    const data = await res.json();
+    const data = await jsonpRequest(params, 180000); // 3 phút cho so sánh EBMS
 
     if (!data.ok) throw new Error(data.error || 'Lỗi không xác định');
 
@@ -350,7 +384,6 @@ function exportCSV(data, action) {
   log('⬇️ Đã xuất CSV', 'ok');
 }
 
-// Đóng kết quả
 document.getElementById('btnCloseResult').addEventListener('click', () => {
   resultCard.style.display = 'none';
 });
