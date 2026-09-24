@@ -1,8 +1,13 @@
 // ============ CẤU HÌNH ============
 const API_URL = 'https://script.google.com/macros/s/AKfycbyNsgSGcAqHXozITTRJKttOSWhG2yYSmYt9KXrQI0bw2CTBS0yCQApPQ_quviC50N2M/exec';
+const DRIVE_FOLDER_ID = '10wMnomA-GMKu7VTFRSMyvvh7Zz-dTAfx';
+const CLIENT_ID = '98709712620-nnajeb7oh59euiasptv0ljpi6r80v4ph.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
 // ============ STATE ============
 const state = {
+  accessToken: null,
+  user: null,
   files: [],
   lastResult: null,
   lastType: null
@@ -19,6 +24,12 @@ const resultCard = document.getElementById('resultCard');
 const resultTitle = document.getElementById('resultTitle');
 const resultContent = document.getElementById('resultContent');
 const summaryEl = document.getElementById('summary');
+const loginNotice = document.getElementById('loginNotice');
+const mainContent = document.getElementById('mainContent');
+const userInfo = document.getElementById('userInfo');
+const userAvatar = document.getElementById('userAvatar');
+const userName = document.getElementById('userName');
+const btnLogout = document.getElementById('btnLogout');
 
 // ============ LOG ============
 function log(msg, type = 'info') {
@@ -39,19 +50,95 @@ function hideLoading() {
   loading.style.display = 'none';
 }
 
+// ============ GOOGLE SIGN-IN ============
+let tokenClient = null;
+
+window.onload = function() {
+  if (typeof google === 'undefined' || !google.accounts) {
+    log('⚠️ Không load được Google Sign-In. Kiểm tra kết nối mạng.', 'err');
+    return;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) {
+        log('❌ Lỗi đăng nhập: ' + resp.error, 'err');
+        return;
+      }
+      state.accessToken = resp.access_token;
+      fetchUserInfo();
+    }
+  });
+  log('🚀 Web đã sẵn sàng. Bấm "Sign in with Google" để bắt đầu.');
+};
+
+// Callback khi bấm nút "Sign in with Google"
+window.onGoogleSignIn = function(response) {
+  // Không dùng nữa, để trống để tránh lỗi
+};
+
+// Thực hiện đăng nhập khi user bấm nút Google (tự động trigger)
+document.addEventListener('click', (e) => {
+  const signInBtn = e.target.closest('.g_id_signin, [aria-labelledby*="button-label"]');
+  if (signInBtn && !state.accessToken && tokenClient) {
+    e.preventDefault();
+    e.stopPropagation();
+    tokenClient.requestAccessToken();
+  }
+}, true);
+
+async function fetchUserInfo() {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { 'Authorization': 'Bearer ' + state.accessToken }
+    });
+    if (!res.ok) throw new Error('Không lấy được thông tin user');
+    const info = await res.json();
+    state.user = info;
+    showLoggedIn(info);
+    log('✅ Đăng nhập thành công: ' + info.name, 'ok');
+  } catch (err) {
+    log('❌ Lỗi lấy thông tin user: ' + err.message, 'err');
+  }
+}
+
+function showLoggedIn(info) {
+  loginNotice.style.display = 'none';
+  mainContent.style.display = 'flex';
+  mainContent.style.flexDirection = 'column';
+  mainContent.style.gap = '20px';
+
+  document.querySelector('.g_id_signin').style.display = 'none';
+  userAvatar.src = info.picture || '';
+  userName.textContent = info.name || info.email || '';
+  userInfo.style.display = 'flex';
+}
+
+btnLogout.addEventListener('click', () => {
+  if (state.accessToken && google && google.accounts) {
+    google.accounts.oauth2.revoke(state.accessToken, () => {});
+  }
+  state.accessToken = null;
+  state.user = null;
+  state.files = [];
+  userInfo.style.display = 'none';
+  document.querySelector('.g_id_signin').style.display = 'inline-block';
+  mainContent.style.display = 'none';
+  loginNotice.style.display = 'block';
+  fileList.innerHTML = '';
+  log('👋 Đã đăng xuất');
+});
+
 // ============ JSONP HELPER ============
-// Vì Apps Script không hỗ trợ CORS, ta dùng JSONP: chèn <script src="...&callback=fn">
-// Trình duyệt sẽ gọi callback khi response trả về.
 let _jsonpCounter = 0;
 function jsonpRequest(params, timeoutMs) {
   return new Promise((resolve, reject) => {
-    timeoutMs = timeoutMs || 120000; // 2 phút cho tác vụ nặng (so sánh EBMS)
+    timeoutMs = timeoutMs || 180000;
     const cbName = '__jsonp_cb_' + (++_jsonpCounter) + '_' + Date.now();
     const url = API_URL + '?callback=' + cbName + '&' + params.toString();
-
     let done = false;
     const script = document.createElement('script');
-
     const cleanup = () => {
       if (done) return;
       done = true;
@@ -59,28 +146,21 @@ function jsonpRequest(params, timeoutMs) {
       if (script.parentNode) script.parentNode.removeChild(script);
       clearTimeout(timer);
     };
-
-    window[cbName] = function(data) {
-      cleanup();
-      resolve(data);
-    };
-
+    window[cbName] = function(data) { cleanup(); resolve(data); };
     script.onerror = function() {
       cleanup();
-      reject(new Error('Không kết nối được API (kiểm tra URL Web App hoặc mạng)'));
+      reject(new Error('Không kết nối được API'));
     };
-
     const timer = setTimeout(() => {
       cleanup();
       reject(new Error('Hết thời gian chờ (' + Math.round(timeoutMs/1000) + 's)'));
     }, timeoutMs);
-
     script.src = url;
     document.body.appendChild(script);
   });
 }
 
-// ============ UPLOAD ============
+// ============ UPLOAD LÊN GOOGLE DRIVE ============
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => {
   e.preventDefault();
@@ -95,6 +175,10 @@ dropzone.addEventListener('drop', e => {
 fileInput.addEventListener('change', e => handleFiles(e.target.files));
 
 function handleFiles(filesInput) {
+  if (!state.accessToken) {
+    log('⚠️ Chưa đăng nhập Google', 'err');
+    return;
+  }
   const files = Array.from(filesInput).filter(f =>
     f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls')
   );
@@ -102,29 +186,60 @@ function handleFiles(filesInput) {
     log('⚠️ Chỉ nhận file .xlsx hoặc .xls', 'err');
     return;
   }
-  files.forEach(uploadFile);
+  files.forEach(uploadFileToDrive);
 }
 
-async function uploadFile(file) {
+async function uploadFileToDrive(file) {
   log(`📤 Đang upload: ${file.name} (${formatSize(file.size)})`);
   const idx = state.files.length;
   state.files.push({ fileName: file.name, size: file.size, status: 'uploading' });
   renderFileList();
 
   try {
-    const base64 = await fileToBase64(file);
-    const params = new URLSearchParams();
-    params.append('action', 'upload');
-    params.append('filename', file.name);
-    params.append('mime', file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    params.append('data', base64);
+    // Tạo metadata
+    const metadata = {
+      name: file.name,
+      parents: [DRIVE_FOLDER_ID]
+    };
 
-    const data = await jsonpRequest(params, 60000);
-    if (!data.ok) throw new Error(data.error || 'Upload thất bại');
+    // Dùng multipart upload: metadata + file content
+    const boundary = '-------314159265358979323846';
+    const delimiter = '\r\n--' + boundary + '\r\n';
+    const closeDelim = '\r\n--' + boundary + '--';
 
-    state.files[idx].fileId = data.fileId;
+    const fileContent = await fileToBase64Raw(file);
+
+    const multipartBody =
+      delimiter +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(metadata) +
+      delimiter +
+      'Content-Type: ' + (file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') + '\r\n' +
+      'Content-Transfer-Encoding: base64\r\n\r\n' +
+      fileContent +
+      closeDelim;
+
+    const res = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + state.accessToken,
+          'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+        },
+        body: multipartBody
+      }
+    );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error('Drive API: ' + res.status + ' - ' + errText.substring(0, 200));
+    }
+
+    const data = await res.json();
+    state.files[idx].fileId = data.id;
     state.files[idx].status = 'done';
-    log(`✅ Upload xong: ${file.name}`, 'ok');
+    log(`✅ Upload xong: ${file.name} (ID: ${data.id.substring(0, 12)}...)`, 'ok');
   } catch (err) {
     state.files[idx].status = 'error';
     log(`❌ Lỗi upload ${file.name}: ${err.message}`, 'err');
@@ -132,23 +247,17 @@ async function uploadFile(file) {
   renderFileList();
 }
 
-function fileToBase64(file) {
+function fileToBase64Raw(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(',')[1];
-      resolve(base64);
-    };
+    reader.onload = () => resolve(reader.result.split(',')[1]);
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
 }
 
 function renderFileList() {
-  if (!state.files.length) {
-    fileList.innerHTML = '';
-    return;
-  }
+  if (!state.files.length) { fileList.innerHTML = ''; return; }
   fileList.innerHTML = state.files.map(f => {
     let statusIcon = '';
     if (f.status === 'uploading') statusIcon = '⏳ Đang upload';
@@ -195,7 +304,6 @@ async function runTask(action) {
     alert('⚠️ Chưa có file nào được upload thành công.');
     return;
   }
-
   const taskName = {
     soSanhEBMS: 'So sánh EBMS',
     trichXuatV1: 'Trích xuất nhân viên v1',
@@ -210,8 +318,7 @@ async function runTask(action) {
     params.append('action', action);
     params.append('fileIds', JSON.stringify(readyFiles.map(f => f.fileId)));
 
-    const data = await jsonpRequest(params, 180000); // 3 phút cho so sánh EBMS
-
+    const data = await jsonpRequest(params, 180000);
     if (!data.ok) throw new Error(data.error || 'Lỗi không xác định');
 
     log(`✅ ${taskName} xong!`, 'ok');
@@ -230,7 +337,6 @@ async function runTask(action) {
 function renderResult(data, action) {
   resultCard.style.display = 'block';
   resultCard.scrollIntoView({ behavior: 'smooth' });
-
   if (action === 'soSanhEBMS') {
     resultTitle.textContent = '📊 Kết quả So sánh EBMS';
     summaryEl.textContent = (data.summary || []).join('\n');
@@ -247,7 +353,6 @@ function renderResult(data, action) {
 function renderSoSanh(routes) {
   const routeKeys = Object.keys(routes).sort((a, b) => Number(a) - Number(b));
   let html = '';
-
   for (const r of routeKeys) {
     const info = routes[r];
     html += `<h3 style="margin:16px 0 8px;color:#1F3864">🚌 Tuyến ${r} — Ngày ${info.ngayPhancong}</h3>`;
@@ -256,7 +361,6 @@ function renderSoSanh(routes) {
                   'Lịch chạy PC','Xe PC','Bến PC','Giờ đi PC','Giờ đến PC','Lệch Đi','Lệch Về','So bến','Ghi chú'];
     html += cols.map(c => `<th>${c}</th>`).join('');
     html += '</tr></thead><tbody>';
-
     for (const row of info.results) {
       const cls = rowClassSoSanh(row.loai);
       html += `<tr class="${cls}">`;
@@ -287,7 +391,6 @@ function rowClassSoSanh(loai) {
 function renderTrichXuat(routes, action) {
   const routeKeys = Object.keys(routes).sort((a, b) => Number(a) - Number(b));
   let html = '';
-
   for (const r of routeKeys) {
     const list = routes[r];
     html += `<h3 style="margin:16px 0 8px;color:#1F3864">🚌 Tuyến ${r} — ${list.length} nhân viên</h3>`;
@@ -298,7 +401,6 @@ function renderTrichXuat(routes, action) {
       html += '<th>Ngày</th><th>Tuyến</th><th>Tên</th><th>Chức vụ</th><th>Check 1</th><th>Check 2</th>';
     }
     html += '</tr></thead><tbody>';
-
     for (const row of list) {
       const cls = row.isAmbiguous ? 'row-ambiguous' : '';
       html += `<tr class="${cls}">`;
@@ -332,7 +434,6 @@ document.getElementById('btnExportCSV').addEventListener('click', () => {
 
 function exportCSV(data, action) {
   const rows = [];
-
   if (action === 'soSanhEBMS') {
     rows.push(['Tuyến','Ngày','Loại','KH Đi','KH Đến','KH Xe','TH Xe','TH Đi','TH Đến',
                'Bến đầu','TT EBMS','Lịch chạy PC','Xe PC','Bến PC','Giờ đi PC','Giờ đến PC',
@@ -365,7 +466,6 @@ function exportCSV(data, action) {
       }
     }
   }
-
   const csv = rows.map(row =>
     row.map(cell => {
       const s = String(cell == null ? '' : cell);
@@ -373,7 +473,6 @@ function exportCSV(data, action) {
         ? '"' + s.replace(/"/g, '""') + '"' : s;
     }).join(',')
   ).join('\n');
-
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -387,6 +486,3 @@ function exportCSV(data, action) {
 document.getElementById('btnCloseResult').addEventListener('click', () => {
   resultCard.style.display = 'none';
 });
-
-// ============ KHỞI TẠO ============
-log('🚀 Web đã sẵn sàng. Kéo thả file Excel vào khung phía trên để bắt đầu.');
