@@ -30,6 +30,7 @@ const userInfo = document.getElementById('userInfo');
 const userAvatar = document.getElementById('userAvatar');
 const userName = document.getElementById('userName');
 const btnLogout = document.getElementById('btnLogout');
+const btnGoogleLogin = document.getElementById('btnGoogleLogin');
 
 // ============ LOG ============
 function log(msg, type = 'info') {
@@ -55,7 +56,7 @@ let tokenClient = null;
 
 window.onload = function() {
   if (typeof google === 'undefined' || !google.accounts) {
-    log('⚠️ Không load được Google Sign-In. Kiểm tra kết nối mạng.', 'err');
+    log('⚠️ Không load được Google Sign-In. Đợi vài giây rồi refresh trang.', 'err');
     return;
   }
   tokenClient = google.accounts.oauth2.initTokenClient({
@@ -70,23 +71,17 @@ window.onload = function() {
       fetchUserInfo();
     }
   });
-  log('🚀 Web đã sẵn sàng. Bấm "Sign in with Google" để bắt đầu.');
-};
 
-// Callback khi bấm nút "Sign in with Google"
-window.onGoogleSignIn = function(response) {
-  // Không dùng nữa, để trống để tránh lỗi
-};
-
-// Thực hiện đăng nhập khi user bấm nút Google (tự động trigger)
-document.addEventListener('click', (e) => {
-  const signInBtn = e.target.closest('.g_id_signin, [aria-labelledby*="button-label"]');
-  if (signInBtn && !state.accessToken && tokenClient) {
-    e.preventDefault();
-    e.stopPropagation();
+  btnGoogleLogin.addEventListener('click', () => {
+    if (!tokenClient) {
+      log('⚠️ Chưa load được Google Sign-In, đợi vài giây rồi thử lại', 'err');
+      return;
+    }
     tokenClient.requestAccessToken();
-  }
-}, true);
+  });
+
+  log('🚀 Web đã sẵn sàng. Bấm "Đăng nhập bằng Google" để bắt đầu.');
+};
 
 async function fetchUserInfo() {
   try {
@@ -97,7 +92,7 @@ async function fetchUserInfo() {
     const info = await res.json();
     state.user = info;
     showLoggedIn(info);
-    log('✅ Đăng nhập thành công: ' + info.name, 'ok');
+    log('✅ Đăng nhập thành công: ' + (info.name || info.email), 'ok');
   } catch (err) {
     log('❌ Lỗi lấy thông tin user: ' + err.message, 'err');
   }
@@ -109,7 +104,7 @@ function showLoggedIn(info) {
   mainContent.style.flexDirection = 'column';
   mainContent.style.gap = '20px';
 
-  document.querySelector('.g_id_signin').style.display = 'none';
+  btnGoogleLogin.style.display = 'none';
   userAvatar.src = info.picture || '';
   userName.textContent = info.name || info.email || '';
   userInfo.style.display = 'flex';
@@ -123,10 +118,11 @@ btnLogout.addEventListener('click', () => {
   state.user = null;
   state.files = [];
   userInfo.style.display = 'none';
-  document.querySelector('.g_id_signin').style.display = 'inline-block';
+  btnGoogleLogin.style.display = 'inline-flex';
   mainContent.style.display = 'none';
   loginNotice.style.display = 'block';
   fileList.innerHTML = '';
+  resultCard.style.display = 'none';
   log('👋 Đã đăng xuất');
 });
 
@@ -196,13 +192,11 @@ async function uploadFileToDrive(file) {
   renderFileList();
 
   try {
-    // Tạo metadata
     const metadata = {
       name: file.name,
       parents: [DRIVE_FOLDER_ID]
     };
 
-    // Dùng multipart upload: metadata + file content
     const boundary = '-------314159265358979323846';
     const delimiter = '\r\n--' + boundary + '\r\n';
     const closeDelim = '\r\n--' + boundary + '--';
