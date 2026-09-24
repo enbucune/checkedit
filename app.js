@@ -46,7 +46,6 @@ function hideLoading() {
 let tokenClient = null;
 
 window.onload = function() {
-  // Gán DOM elements
   dropzone = document.getElementById('dropzone');
   fileInput = document.getElementById('fileInput');
   fileList = document.getElementById('fileList');
@@ -65,10 +64,8 @@ window.onload = function() {
   btnLogout = document.getElementById('btnLogout');
   btnGoogleLogin = document.getElementById('btnGoogleLogin');
 
-  // Setup các listener khác
   setupOtherListeners();
 
-  // Setup Google Sign-In
   if (typeof google === 'undefined' || !google.accounts) {
     log('⚠️ Không load được Google Sign-In. Đợi vài giây rồi refresh trang.', 'err');
     return;
@@ -98,7 +95,6 @@ window.onload = function() {
 };
 
 function setupOtherListeners() {
-  // Dropzone
   dropzone.addEventListener('click', function() { fileInput.click(); });
   dropzone.addEventListener('dragover', function(e) {
     e.preventDefault();
@@ -112,7 +108,6 @@ function setupOtherListeners() {
   });
   fileInput.addEventListener('change', function(e) { handleFiles(e.target.files); });
 
-  // Clear files
   document.getElementById('btnClearFiles').addEventListener('click', function() {
     if (!state.files.length) return;
     if (!confirm('Xóa danh sách file đã upload? File trên Drive vẫn còn.')) return;
@@ -121,23 +116,19 @@ function setupOtherListeners() {
     log('🗑️ Đã xóa danh sách file khỏi giao diện');
   });
 
-  // Task buttons
   document.querySelectorAll('.task-btn').forEach(function(btn) {
     btn.addEventListener('click', function() { runTask(btn.dataset.action); });
   });
 
-  // Export CSV
   document.getElementById('btnExportCSV').addEventListener('click', function() {
     if (!state.lastResult) return;
     exportCSV(state.lastResult, state.lastType);
   });
 
-  // Close result
   document.getElementById('btnCloseResult').addEventListener('click', function() {
     resultCard.style.display = 'none';
   });
 
-  // Logout
   btnLogout.addEventListener('click', function() {
     if (state.accessToken && google && google.accounts) {
       google.accounts.oauth2.revoke(state.accessToken, function() {});
@@ -268,7 +259,7 @@ async function uploadFileToDrive(file) {
     const data = await res.json();
     state.files[idx].fileId = data.id;
     state.files[idx].status = 'done';
-    log('✅ Upload xong: ' + file.name + ' (ID: ' + data.id.substring(0, 12) + '...)', 'ok');
+    log('✅ Upload xong: ' + file.name, 'ok');
   } catch (err) {
     state.files[idx].status = 'error';
     log('❌ Lỗi upload ' + file.name + ': ' + err.message, 'err');
@@ -320,8 +311,12 @@ async function runTask(action) {
     alert('⚠️ Chưa có file nào được upload thành công.');
     return;
   }
+  if (action === 'soSanhEBMS') {
+    await runSoSanhTungTuyen(readyFiles);
+    return;
+  }
+
   const taskName = {
-    soSanhEBMS: 'So sánh EBMS',
     trichXuatV1: 'Trích xuất nhân viên v1',
     trichXuatV2: 'Trích xuất nhân viên v2'
   }[action];
@@ -347,6 +342,62 @@ async function runTask(action) {
   }
 }
 
+async function runSoSanhTungTuyen(readyFiles) {
+  showLoading('Đang chạy so sánh EBMS...');
+  log('▶️ Bắt đầu: So sánh EBMS (' + readyFiles.length + ' file)');
+
+  const routeFiles = [];
+  for (const f of readyFiles) {
+    const m = f.fileName.match(/Tuy[eếêề]n\s*0*(\d{1,3})/i);
+    if (m) {
+      routeFiles.push({ fileId: f.fileId, fileName: f.fileName, routeNumber: parseInt(m[1], 10) });
+    } else {
+      log('⚠️ Bỏ qua: ' + f.fileName + ' (không có "Tuyến <số>")', 'err');
+    }
+  }
+  if (!routeFiles.length) {
+    hideLoading();
+    alert('⚠️ Không có file nào có "Tuyến <số>" trong tên');
+    return;
+  }
+
+  const allRoutes = {};
+  const summary = [];
+
+  for (let i = 0; i < routeFiles.length; i++) {
+    const rf = routeFiles[i];
+    showLoading('Đang chạy tuyến ' + rf.routeNumber + ' (' + (i+1) + '/' + routeFiles.length + ')...');
+    log('⏳ Tuyến ' + rf.routeNumber + ' (' + (i+1) + '/' + routeFiles.length + ')...');
+
+    try {
+      const params = new URLSearchParams();
+      params.append('action', 'soSanh1Tuyen');
+      params.append('fileId', rf.fileId);
+      params.append('routeNumber', String(rf.routeNumber));
+
+      const data = await jsonpRequest(params, 60000);
+      if (!data.ok) {
+        log('❌ Tuyến ' + rf.routeNumber + ': ' + data.error, 'err');
+        summary.push('❌ Tuyến ' + rf.routeNumber + ': ' + data.error);
+        continue;
+      }
+      allRoutes[rf.routeNumber] = { results: data.results, ngayPhancong: data.ngayPhancong };
+      summary.push('✅ Tuyến ' + rf.routeNumber + ' (ngày ' + data.ngayPhancong + '): ' + data.total + ' chuyến');
+      log('✅ Tuyến ' + rf.routeNumber + ' xong (' + data.total + ' chuyến)', 'ok');
+    } catch (err) {
+      log('❌ Tuyến ' + rf.routeNumber + ': ' + err.message, 'err');
+      summary.push('❌ Tuyến ' + rf.routeNumber + ': ' + err.message);
+    }
+  }
+
+  hideLoading();
+  log('✅ Hoàn tất so sánh EBMS', 'ok');
+
+  state.lastResult = { ok: true, type: 'soSanhEBMS', summary: summary, routes: allRoutes };
+  state.lastType = 'soSanhEBMS';
+  renderResult(state.lastResult, 'soSanhEBMS');
+}
+
 // ============ RENDER KẾT QUẢ ============
 function renderResult(data, action) {
   resultCard.style.display = 'block';
@@ -365,7 +416,15 @@ function renderResult(data, action) {
 }
 
 function renderSoSanh(routes) {
+  if (!routes || typeof routes !== 'object') {
+    resultContent.innerHTML = '<p style="color:#999;padding:20px;text-align:center">Không có dữ liệu</p>';
+    return;
+  }
   const routeKeys = Object.keys(routes).sort(function(a, b) { return Number(a) - Number(b); });
+  if (!routeKeys.length) {
+    resultContent.innerHTML = '<p style="color:#999;padding:20px;text-align:center">Không có kết quả</p>';
+    return;
+  }
   let html = '';
   for (const r of routeKeys) {
     const info = routes[r];
@@ -403,7 +462,15 @@ function rowClassSoSanh(loai) {
 }
 
 function renderTrichXuat(routes, action) {
+  if (!routes || typeof routes !== 'object') {
+    resultContent.innerHTML = '<p style="color:#999;padding:20px;text-align:center">Không có dữ liệu</p>';
+    return;
+  }
   const routeKeys = Object.keys(routes).sort(function(a, b) { return Number(a) - Number(b); });
+  if (!routeKeys.length) {
+    resultContent.innerHTML = '<p style="color:#999;padding:20px;text-align:center">Không có kết quả</p>';
+    return;
+  }
   let html = '';
   for (const r of routeKeys) {
     const list = routes[r];
