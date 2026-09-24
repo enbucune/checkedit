@@ -15,20 +15,11 @@
       <h1>🚌 Web xử lý công việc</h1>
       <p class="sub">Kéo thả file Excel vào khung, chọn tác vụ cần chạy</p>
     </div>
-    <div id="authArea" class="auth-area">
-      <div id="g_id_onload"
-           data-client_id="98709712620-nnajeb7oh59euiasptv0ljpi6r80v4ph.apps.googleusercontent.com"
-           data-callback="onGoogleSignIn"
-           data-auto_prompt="false">
-      </div>
-      <div class="g_id_signin"
-           data-type="standard"
-           data-size="large"
-           data-theme="outline"
-           data-text="signin_with"
-           data-shape="rectangular"
-           data-logo_alignment="left">
-      </div>
+         <div id="authArea" class="auth-area">
+        <button id="btnGoogleLogin" class="btn btn-login">
+          <img src="https://www.google.com/favicon.ico" style="width:16px;height:16px;vertical-align:middle;margin-right:6px">
+          Đăng nhập bằng Google
+        </button>
       <div id="userInfo" class="user-info" style="display:none">
         <img id="userAvatar" class="user-avatar" alt="">
         <span id="userName" class="user-name"></span>
