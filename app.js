@@ -423,41 +423,105 @@ function renderResult(data, action) {
   }
 }
 
+const SS = { routes: null, route: null, filter: 'all', q: '' };
+const SS_FILTERS = [
+  ['all', 'Tất cả'], ['bad', '🚨 Bất thường'], ['ok', '✅ Khớp'], ['warn', '⚠️ Lệch'],
+  ['plan', '🟠 Lệch giờ KH'], ['nopc', '🔴 Không có PC'], ['noebms', '🟡 Thiếu EBMS']
+];
+
+function ssKind(loai) {
+  if (loai.includes('KHỚP')) return 'ok';
+  if (loai.includes('GIỜ KẾ HOẠCH')) return 'plan';
+  if (loai.includes('KHÔNG CÓ PHÂN CÔNG')) return 'nopc';
+  if (loai.includes('THIẾU EBMS')) return 'noebms';
+  return 'warn';
+}
+function ssNorm(s) {
+  return String(s == null ? '' : s).toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+}
+function ssEmpty(v) { return v == null || v === '' || v === '-' || v === 'N/A'; }
+function ssTxt(v) { return ssEmpty(v) ? '<span class="muted">–</span>' : escapeHtml(v); }
+function ssRange(a, b) {
+  if (ssEmpty(a) && ssEmpty(b)) return '<span class="muted">–</span>';
+  return '<b>' + (ssEmpty(a) ? '–' : escapeHtml(a)) + '</b> → <b>' + (ssEmpty(b) ? '–' : escapeHtml(b)) + '</b>';
+}
+
 function renderSoSanh(routes) {
-  if (!routes || typeof routes !== 'object') {
+  if (!routes || typeof routes !== 'object' || !Object.keys(routes).length) {
     resultContent.innerHTML = '<p style="color:#999;padding:20px;text-align:center">Không có dữ liệu</p>';
     return;
   }
-  const routeKeys = Object.keys(routes).sort(function(a, b) { return Number(a) - Number(b); });
-  if (!routeKeys.length) {
-    resultContent.innerHTML = '<p style="color:#999;padding:20px;text-align:center">Không có kết quả</p>';
+  const keys = Object.keys(routes).sort(function(a, b) { return Number(a) - Number(b); });
+  SS.routes = routes; SS.route = keys[0]; SS.filter = 'all'; SS.q = '';
+  resultContent.innerHTML =
+    '<div id="ssTabs" class="ss-tabs"></div>' +
+    '<div class="ss-tools"><input id="ssSearch" class="ss-search" type="search" placeholder="🔍 Tìm xe, giờ, bến, ghi chú...">' +
+    '<div id="ssChips" class="ss-chips"></div></div>' +
+    '<div id="ssInfo" class="ss-info"></div><div id="ssTable" class="ss-wrap"></div>';
+  document.getElementById('ssSearch').addEventListener('input', function(e) { SS.q = e.target.value; drawSoSanh(); });
+  document.getElementById('ssTabs').onclick = function(e) {
+    const b = e.target.closest('[data-r]');
+    if (b) { SS.route = b.dataset.r; SS.filter = 'all'; drawSoSanh(); }
+  };
+  document.getElementById('ssChips').onclick = function(e) {
+    const b = e.target.closest('[data-f]');
+    if (b) { SS.filter = b.dataset.f; drawSoSanh(); }
+  };
+  drawSoSanh();
+}
+
+function drawSoSanh() {
+  const keys = Object.keys(SS.routes).sort(function(a, b) { return Number(a) - Number(b); });
+  document.getElementById('ssTabs').innerHTML = keys.map(function(k) {
+    const bad = SS.routes[k].results.filter(function(r) { return ssKind(r.loai) !== 'ok'; }).length;
+    return '<button class="ss-tab' + (k === SS.route ? ' active' : '') + '" data-r="' + k + '">Tuyến ' + k +
+      ' <span class="ss-badge' + (bad ? ' bad' : '') + '">' + (bad ? bad + ' bất thường' : 'ổn') + '</span></button>';
+  }).join('');
+
+  const info = SS.routes[SS.route];
+  const q = ssNorm(SS.q).trim();
+  const base = info.results.filter(function(r) {
+    if (!q) return true;
+    return ssNorm([r.loai, r.xePC, r.thXe, r.khXe, r.benDau, r.benXuatPhatPC, r.lichChayPC,
+                   r.khDi, r.thDi, r.gioDiPC, r.ghi].join(' ')).indexOf(q) >= 0;
+  });
+  const cnt = { all: base.length, bad: 0, ok: 0, warn: 0, plan: 0, nopc: 0, noebms: 0 };
+  base.forEach(function(r) { const k = ssKind(r.loai); cnt[k]++; if (k !== 'ok') cnt.bad++; });
+  document.getElementById('ssChips').innerHTML = SS_FILTERS.map(function(f) {
+    return '<button class="ss-chip' + (f[0] === SS.filter ? ' active' : '') + '" data-f="' + f[0] + '">' +
+      f[1] + ' <b>' + cnt[f[0]] + '</b></button>';
+  }).join('');
+
+  const rows = base.filter(function(r) {
+    const k = ssKind(r.loai);
+    return SS.filter === 'all' || (SS.filter === 'bad' ? k !== 'ok' : k === SS.filter);
+  });
+  document.getElementById('ssInfo').textContent =
+    'Ngày phân công: ' + info.ngayPhancong + '  ·  Đang hiện ' + rows.length + '/' + info.results.length + ' chuyến';
+
+  if (!rows.length) {
+    document.getElementById('ssTable').innerHTML = '<p class="muted" style="padding:24px;text-align:center">Không có dòng nào khớp bộ lọc</p>';
     return;
   }
-  let html = '';
-  for (const r of routeKeys) {
-    const info = routes[r];
-    html += '<h3 style="margin:16px 0 8px;color:#1F3864">🚌 Tuyến ' + r + ' — Ngày ' + info.ngayPhancong + '</h3>';
-    html += '<table><thead><tr>';
-    const cols = ['Loại','KH Đi','KH Đến','KH Xe','TH Xe','TH Đi','TH Đến','Bến đầu','TT EBMS',
-                  'Lịch chạy PC','Xe PC','Bến PC','Giờ đi PC','Giờ đến PC','Lệch Đi','Lệch Về','So bến','Ghi chú'];
-    html += cols.map(function(c) { return '<th>' + c + '</th>'; }).join('');
-    html += '</tr></thead><tbody>';
-    for (const row of info.results) {
-      const cls = rowClassSoSanh(row.loai);
-      html += '<tr class="' + cls + '">';
-      html += '<td>' + row.loai + '</td>';
-      html += '<td>' + row.khDi + '</td><td>' + row.khDen + '</td><td>' + row.khXe + '</td>';
-      html += '<td>' + row.thXe + '</td><td>' + row.thDi + '</td><td>' + row.thDen + '</td>';
-      html += '<td>' + row.benDau + '</td><td>' + row.trangThaiEBMS + '</td>';
-      html += '<td>' + row.lichChayPC + '</td><td>' + row.xePC + '</td><td>' + row.benXuatPhatPC + '</td>';
-      html += '<td>' + row.gioDiPC + '</td><td>' + row.gioDenPC + '</td>';
-      html += '<td>' + row.chenhLechDi + '</td><td>' + row.chenhLechDen + '</td><td>' + row.soBen + '</td>';
-      html += '<td class="notes">' + escapeHtml(row.ghi) + '</td>';
-      html += '</tr>';
-    }
-    html += '</tbody></table>';
+  let html = '<table class="ss-table"><thead><tr>' +
+    '<th>Loại</th><th>Bến</th><th class="eb">EBMS · Kế hoạch</th><th class="eb">EBMS · Thực hiện</th>' +
+    '<th class="pc">Phân công</th><th>Lệch (Đi / Đến)</th><th>Xe</th><th>Ghi chú</th></tr></thead><tbody>';
+  for (const row of rows) {
+    const k = ssKind(row.loai);
+    const ben = !ssEmpty(row.benDau) ? row.benDau : row.benXuatPhatPC;
+    const benLech = String(row.soBen).indexOf('Lệch') >= 0;
+    html += '<tr class="' + rowClassSoSanh(row.loai) + ' k-' + k + '">' +
+      '<td class="nw"><span class="tag t-' + k + '">' + escapeHtml(row.loai) + '</span></td>' +
+      '<td>' + ssTxt(ben) + (benLech ? '<span class="sub bad">PC: ' + escapeHtml(row.benXuatPhatPC) + '</span>' : '') + '</td>' +
+      '<td class="nw">' + ssRange(row.khDi, row.khDen) + '</td>' +
+      '<td class="nw">' + ssRange(row.thDi, row.thDen) + '<span class="sub">' + ssTxt(row.trangThaiEBMS) + '</span></td>' +
+      '<td class="nw">' + ssRange(row.gioDiPC, row.gioDenPC) + '<span class="sub">KH: ' + ssTxt(row.lichChayPC) + '</span></td>' +
+      '<td class="nw">' + ssTxt(row.chenhLechDi) + ' / ' + ssTxt(row.chenhLechDen) + '</td>' +
+      '<td class="nw"><span class="sub">PC</span>' + ssTxt(row.xePC) + '<span class="sub">EBMS</span>' + ssTxt(row.thXe) + '</td>' +
+      '<td>' + ssTxt(row.ghi) + '</td></tr>';
   }
-  resultContent.innerHTML = html;
+  document.getElementById('ssTable').innerHTML = html + '</tbody></table>';
 }
 
 function rowClassSoSanh(loai) {
