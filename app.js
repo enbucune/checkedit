@@ -10,7 +10,14 @@ const state = {
   user: null,
   files: [],
   lastResult: null,
-  lastType: null
+  lastType: null,
+  view: {
+    activeRoute: 'all',
+    activeFilter: 'all',
+    searchText: '',
+    shownCount: 0,
+    totalCount: 0
+  }
 };
 
 // ============ DOM (gán trong window.onload) ============
@@ -18,6 +25,8 @@ let dropzone, fileInput, fileList, logEl, loading, loadingText;
 let resultCard, resultTitle, resultContent, summaryEl;
 let loginNotice, mainContent, userInfo, userAvatar, userName;
 let btnLogout, btnGoogleLogin;
+let resultsWorkspaceEl, noDataYetEl, lookupBarEl, searchInputEl, lookupMetaEl;
+let statCardsEl, routeTabsEl, filterChipsEl;
 
 // ============ LOG ============
 function log(msg, type) {
@@ -63,6 +72,15 @@ window.onload = function() {
   userName = document.getElementById('userName');
   btnLogout = document.getElementById('btnLogout');
   btnGoogleLogin = document.getElementById('btnGoogleLogin');
+
+  resultsWorkspaceEl = document.getElementById('resultsWorkspace');
+  noDataYetEl = document.getElementById('noDataYet');
+  lookupBarEl = document.querySelector('.lookup-bar');
+  searchInputEl = document.getElementById('searchInput');
+  lookupMetaEl = document.getElementById('lookupMeta');
+  statCardsEl = document.getElementById('statCards');
+  routeTabsEl = document.getElementById('routeTabs');
+  filterChipsEl = document.getElementById('filterChips');
 
   setupOtherListeners();
 
@@ -126,7 +144,12 @@ function setupOtherListeners() {
   });
 
   document.getElementById('btnCloseResult').addEventListener('click', function() {
-    resultCard.style.display = 'none';
+    showEmptyLookupState();
+  });
+
+  searchInputEl.addEventListener('input', function() {
+    state.view.searchText = searchInputEl.value;
+    renderActiveView();
   });
 
   btnLogout.addEventListener('click', function() {
@@ -139,9 +162,9 @@ function setupOtherListeners() {
     userInfo.style.display = 'none';
     btnGoogleLogin.style.display = 'inline-flex';
     mainContent.style.display = 'none';
-    loginNotice.style.display = 'block';
+    loginNotice.style.display = 'flex';
+    resultsWorkspaceEl.style.display = 'none';
     fileList.innerHTML = '';
-    resultCard.style.display = 'none';
     log('👋 Đã đăng xuất');
   });
 }
@@ -164,12 +187,35 @@ async function fetchUserInfo() {
 function showLoggedIn(info) {
   loginNotice.style.display = 'none';
   mainContent.style.display = 'flex';
-  mainContent.style.flexDirection = 'column';
-  mainContent.style.gap = '20px';
   btnGoogleLogin.style.display = 'none';
   userAvatar.src = info.picture || '';
   userName.textContent = info.name || info.email || '';
   userInfo.style.display = 'flex';
+  resultsWorkspaceEl.style.display = 'block';
+  showEmptyLookupState();
+}
+
+// ============ TRẠNG THÁI KHU VỰC TRA CỨU ============
+function showEmptyLookupState() {
+  noDataYetEl.style.display = 'flex';
+  lookupBarEl.style.display = 'none';
+  statCardsEl.style.display = 'none';
+  routeTabsEl.style.display = 'none';
+  filterChipsEl.style.display = 'none';
+  resultCard.style.display = 'none';
+}
+
+function updateLookupMeta() {
+  lookupMetaEl.textContent = 'Hiển thị ' + state.view.shownCount + ' / ' + state.view.totalCount + ' dòng';
+}
+
+// ============ TÌM KIẾM KHÔNG DẤU ============
+function normalizeSearch(str) {
+  return String(str == null ? '' : str)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
 }
 
 // ============ JSONP ============
@@ -348,13 +394,12 @@ async function runSoSanhTungTuyen(readyFiles) {
 
   const routeFiles = [];
   for (const f of readyFiles) {
-    // FIX: Normalize Unicode trước khi match regex (xử lý NFD vs NFC)
+    // Normalize Unicode trước khi match regex (xử lý NFD vs NFC trên tên file)
     const nameNFC = String(f.fileName).normalize('NFC');
     const m = nameNFC.match(/Tuy[eếêề]n\s*0*(\d{1,3})/i);
     if (m) {
       routeFiles.push({ fileId: f.fileId, fileName: f.fileName, routeNumber: parseInt(m[1], 10) });
     } else {
-      // Fallback: thử tìm số sau chữ "Tuyến" bằng cách linh hoạt hơn (cho trường hợp có ký tự đặc biệt)
       const m2 = nameNFC.match(/Tuy[eếêề]n\D*?(\d{1,3})/i);
       if (m2) {
         routeFiles.push({ fileId: f.fileId, fileName: f.fileName, routeNumber: parseInt(m2[1], 10) });
@@ -406,180 +451,275 @@ async function runSoSanhTungTuyen(readyFiles) {
   renderResult(state.lastResult, 'soSanhEBMS');
 }
 
-// ============ RENDER KẾT QUẢ ============
+// ============ PHÂN LOẠI DÒNG (dùng chung cho màu + đếm + lọc) ============
+function categoryOf(loai) {
+  if (loai.includes('KHỚP')) return 'KHỚP';
+  if (loai.includes('LỆCH GIỜ KẾ HOẠCH')) return 'LỆCH GIỜ KẾ HOẠCH';
+  if (loai.includes('LỆCH')) return 'LỆCH';
+  if (loai.includes('KHÔNG CÓ PHÂN CÔNG')) return 'KHÔNG CÓ PHÂN CÔNG';
+  if (loai.includes('THIẾU EBMS')) return 'THIẾU EBMS';
+  return 'KHÁC';
+}
+function rowClassSoSanh(loai) {
+  return {
+    'KHỚP': 'row-ok',
+    'LỆCH': 'row-warn',
+    'LỆCH GIỜ KẾ HOẠCH': 'row-plan',
+    'KHÔNG CÓ PHÂN CÔNG': 'row-miss-pc',
+    'THIẾU EBMS': 'row-miss-ebms'
+  }[categoryOf(loai)] || '';
+}
+
+// ============ RENDER: ĐIỀU PHỐI CHUNG ============
 function renderResult(data, action) {
+  noDataYetEl.style.display = 'none';
+  lookupBarEl.style.display = 'flex';
+  statCardsEl.style.display = 'flex';
+  routeTabsEl.style.display = 'flex';
   resultCard.style.display = 'block';
-  resultCard.scrollIntoView({ behavior: 'smooth' });
+
+  state.view = { activeRoute: 'all', activeFilter: 'all', searchText: '', shownCount: 0, totalCount: 0 };
+  searchInputEl.value = '';
+
   if (action === 'soSanhEBMS') {
-    resultTitle.textContent = '📊 Kết quả So sánh EBMS';
-    summaryEl.textContent = (data.summary || []).join('\n');
-    renderSoSanh(data.routes);
+    resultTitle.textContent = '📊 Kết quả so sánh EBMS';
+    buildStatCardsSoSanh(data.routes);
+    buildRouteTabs(data.routes);
+    buildFilterChipsSoSanh(data.routes);
   } else {
     resultTitle.textContent = action === 'trichXuatV1'
-      ? '👥 Kết quả Trích xuất NV v1'
-      : '📋 Kết quả Trích xuất NV v2';
-    summaryEl.textContent = (data.summary || []).join('\n');
-    renderTrichXuat(data.routes, action);
+      ? '👥 Kết quả trích xuất NV v1'
+      : '📋 Kết quả trích xuất NV v2';
+    buildStatCardsTrichXuat(data.routes, action);
+    buildRouteTabs(data.routes);
+    filterChipsEl.style.display = 'none';
+    filterChipsEl.innerHTML = '';
   }
+
+  summaryEl.textContent = (data.summary || []).join('\n');
+  renderActiveView();
+  resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-const SS = { routes: null, route: null, filter: 'all', q: '' };
-const SS_FILTERS = [
-  ['all', 'Tất cả'], ['bad', '🚨 Bất thường'], ['ok', '✅ Khớp'], ['warn', '⚠️ Lệch'],
-  ['plan', '🟠 Lệch giờ KH'], ['nopc', '🔴 Không có PC'], ['noebms', '🟡 Thiếu EBMS']
-];
-
-function ssKind(loai) {
-  if (loai.includes('KHỚP')) return 'ok';
-  if (loai.includes('GIỜ KẾ HOẠCH')) return 'plan';
-  if (loai.includes('KHÔNG CÓ PHÂN CÔNG')) return 'nopc';
-  if (loai.includes('THIẾU EBMS')) return 'noebms';
-  return 'warn';
-}
-function ssNorm(s) {
-  return String(s == null ? '' : s).toLowerCase().normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
-}
-function ssEmpty(v) { return v == null || v === '' || v === '-' || v === 'N/A'; }
-function ssTxt(v) { return ssEmpty(v) ? '<span class="muted">–</span>' : escapeHtml(v); }
-function ssRange(a, b) {
-  if (ssEmpty(a) && ssEmpty(b)) return '<span class="muted">–</span>';
-  return '<b>' + (ssEmpty(a) ? '–' : escapeHtml(a)) + '</b> → <b>' + (ssEmpty(b) ? '–' : escapeHtml(b)) + '</b>';
-}
-
-function renderSoSanh(routes) {
-  if (!routes || typeof routes !== 'object' || !Object.keys(routes).length) {
-    resultContent.innerHTML = '<p style="color:#999;padding:20px;text-align:center">Không có dữ liệu</p>';
-    return;
-  }
+// ============ TAB THEO TUYẾN ============
+function buildRouteTabs(routes) {
   const keys = Object.keys(routes).sort(function(a, b) { return Number(a) - Number(b); });
-  SS.routes = routes; SS.route = keys[0]; SS.filter = 'all'; SS.q = '';
-  resultContent.innerHTML =
-    '<div id="ssTabs" class="ss-tabs"></div>' +
-    '<div class="ss-tools"><input id="ssSearch" class="ss-search" type="search" placeholder="🔍 Tìm xe, giờ, bến, ghi chú...">' +
-    '<div id="ssChips" class="ss-chips"></div></div>' +
-    '<div id="ssInfo" class="ss-info"></div><div id="ssTable" class="ss-wrap"></div>';
-  document.getElementById('ssSearch').addEventListener('input', function(e) { SS.q = e.target.value; drawSoSanh(); });
-  document.getElementById('ssTabs').onclick = function(e) {
-    const b = e.target.closest('[data-r]');
-    if (b) { SS.route = b.dataset.r; SS.filter = 'all'; drawSoSanh(); }
-  };
-  document.getElementById('ssChips').onclick = function(e) {
-    const b = e.target.closest('[data-f]');
-    if (b) { SS.filter = b.dataset.f; drawSoSanh(); }
-  };
-  drawSoSanh();
-}
-
-function drawSoSanh() {
-  const keys = Object.keys(SS.routes).sort(function(a, b) { return Number(a) - Number(b); });
-  document.getElementById('ssTabs').innerHTML = keys.map(function(k) {
-    const bad = SS.routes[k].results.filter(function(r) { return ssKind(r.loai) !== 'ok'; }).length;
-    return '<button class="ss-tab' + (k === SS.route ? ' active' : '') + '" data-r="' + k + '">Tuyến ' + k +
-      ' <span class="ss-badge' + (bad ? ' bad' : '') + '">' + (bad ? bad + ' bất thường' : 'ổn') + '</span></button>';
+  let html = '<button class="route-tab active" data-route="all">Tất cả tuyến</button>';
+  html += keys.map(function(r) {
+    return '<button class="route-tab" data-route="' + r + '">Tuyến ' + r + '</button>';
   }).join('');
-
-  const info = SS.routes[SS.route];
-  const q = ssNorm(SS.q).trim();
-  const base = info.results.filter(function(r) {
-    if (!q) return true;
-    return ssNorm([r.loai, r.xePC, r.thXe, r.khXe, r.benDau, r.benXuatPhatPC, r.lichChayPC,
-                   r.khDi, r.thDi, r.gioDiPC, r.ghi].join(' ')).indexOf(q) >= 0;
+  routeTabsEl.innerHTML = html;
+  routeTabsEl.querySelectorAll('.route-tab').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      routeTabsEl.querySelectorAll('.route-tab').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      state.view.activeRoute = btn.dataset.route;
+      renderActiveView();
+    });
   });
-  const cnt = { all: base.length, bad: 0, ok: 0, warn: 0, plan: 0, nopc: 0, noebms: 0 };
-  base.forEach(function(r) { const k = ssKind(r.loai); cnt[k]++; if (k !== 'ok') cnt.bad++; });
-  document.getElementById('ssChips').innerHTML = SS_FILTERS.map(function(f) {
-    return '<button class="ss-chip' + (f[0] === SS.filter ? ' active' : '') + '" data-f="' + f[0] + '">' +
-      f[1] + ' <b>' + cnt[f[0]] + '</b></button>';
+}
+
+// ============ CHIP LỌC (chỉ dùng cho So sánh EBMS) ============
+function buildFilterChipsSoSanh(routes) {
+  const counts = {};
+  Object.keys(routes).forEach(function(r) {
+    routes[r].results.forEach(function(row) {
+      const cat = categoryOf(row.loai);
+      counts[cat] = (counts[cat] || 0) + 1;
+    });
+  });
+  const total = Object.keys(counts).reduce(function(s, k) { return s + counts[k]; }, 0);
+  const categories = [
+    { key: 'all', label: 'Tất cả' },
+    { key: 'KHỚP', label: 'Khớp' },
+    { key: 'LỆCH GIỜ KẾ HOẠCH', label: 'Lệch giờ KH' },
+    { key: 'LỆCH', label: 'Lệch' },
+    { key: 'KHÔNG CÓ PHÂN CÔNG', label: 'Thiếu PC' },
+    { key: 'THIẾU EBMS', label: 'Thiếu EBMS' }
+  ];
+  filterChipsEl.style.display = 'flex';
+  filterChipsEl.innerHTML = categories.map(function(c) {
+    const n = c.key === 'all' ? total : (counts[c.key] || 0);
+    if (c.key !== 'all' && n === 0) return '';
+    return '<button class="filter-chip' + (c.key === 'all' ? ' active' : '') + '" data-filter="' + c.key + '">' +
+      c.label + ' <span class="chip-count">' + n + '</span></button>';
   }).join('');
-
-  const rows = base.filter(function(r) {
-    const k = ssKind(r.loai);
-    return SS.filter === 'all' || (SS.filter === 'bad' ? k !== 'ok' : k === SS.filter);
+  filterChipsEl.querySelectorAll('.filter-chip').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      filterChipsEl.querySelectorAll('.filter-chip').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      state.view.activeFilter = btn.dataset.filter;
+      renderActiveView();
+    });
   });
-  document.getElementById('ssInfo').textContent =
-    'Ngày phân công: ' + info.ngayPhancong + '  ·  Đang hiện ' + rows.length + '/' + info.results.length + ' chuyến';
-
-  if (!rows.length) {
-    document.getElementById('ssTable').innerHTML = '<p class="muted" style="padding:24px;text-align:center">Không có dòng nào khớp bộ lọc</p>';
-    return;
-  }
-  let html = '<table class="ss-table"><thead><tr>' +
-    '<th>Loại</th><th>Bến</th><th class="eb">EBMS · Kế hoạch</th><th class="eb">EBMS · Thực hiện</th>' +
-    '<th class="pc">Phân công</th><th>Lệch (Đi / Đến)</th><th>Xe</th><th>Ghi chú</th></tr></thead><tbody>';
-  for (const row of rows) {
-    const k = ssKind(row.loai);
-    const ben = !ssEmpty(row.benDau) ? row.benDau : row.benXuatPhatPC;
-    const benLech = String(row.soBen).indexOf('Lệch') >= 0;
-    html += '<tr class="' + rowClassSoSanh(row.loai) + ' k-' + k + '">' +
-      '<td class="nw"><span class="tag t-' + k + '">' + escapeHtml(row.loai) + '</span></td>' +
-      '<td>' + ssTxt(ben) + (benLech ? '<span class="sub bad">PC: ' + escapeHtml(row.benXuatPhatPC) + '</span>' : '') + '</td>' +
-      '<td class="nw">' + ssRange(row.khDi, row.khDen) + '</td>' +
-      '<td class="nw">' + ssRange(row.thDi, row.thDen) + '<span class="sub">' + ssTxt(row.trangThaiEBMS) + '</span></td>' +
-      '<td class="nw">' + ssRange(row.gioDiPC, row.gioDenPC) + '<span class="sub">KH: ' + ssTxt(row.lichChayPC) + '</span></td>' +
-      '<td class="nw">' + ssTxt(row.chenhLechDi) + ' / ' + ssTxt(row.chenhLechDen) + '</td>' +
-      '<td class="nw"><span class="sub">PC</span>' + ssTxt(row.xePC) + '<span class="sub">EBMS</span>' + ssTxt(row.thXe) + '</td>' +
-      '<td>' + ssTxt(row.ghi) + '</td></tr>';
-  }
-  document.getElementById('ssTable').innerHTML = html + '</tbody></table>';
 }
 
-function rowClassSoSanh(loai) {
-  if (loai.includes('KHỚP')) return 'row-ok';
-  if (loai.includes('LỆCH') && !loai.includes('GIỜ KẾ HOẠCH')) return 'row-warn';
-  if (loai.includes('LỆCH GIỜ KẾ HOẠCH')) return 'row-plan';
-  if (loai.includes('KHÔNG CÓ PHÂN CÔNG')) return 'row-miss-pc';
-  if (loai.includes('THIẾU EBMS')) return 'row-miss-ebms';
-  return '';
+// ============ THẺ THỐNG KÊ ============
+function buildStatCardsSoSanh(routes) {
+  const counts = {};
+  let total = 0;
+  Object.keys(routes).forEach(function(r) {
+    routes[r].results.forEach(function(row) {
+      const cat = categoryOf(row.loai);
+      counts[cat] = (counts[cat] || 0) + 1;
+      total++;
+    });
+  });
+  const cards = [
+    { label: 'Tổng số chuyến', value: total, tone: 'neutral' },
+    { label: 'Khớp', value: counts['KHỚP'] || 0, tone: 'ok' },
+    { label: 'Lệch giờ', value: (counts['LỆCH'] || 0) + (counts['LỆCH GIỜ KẾ HOẠCH'] || 0), tone: 'warn' },
+    { label: 'Thiếu phân công', value: counts['KHÔNG CÓ PHÂN CÔNG'] || 0, tone: 'danger' },
+    { label: 'Thiếu EBMS', value: counts['THIẾU EBMS'] || 0, tone: 'danger2' }
+  ];
+  statCardsEl.style.display = 'flex';
+  statCardsEl.innerHTML = cards.map(function(c) {
+    return '<div class="stat-card tone-' + c.tone + '"><div class="stat-value">' + c.value + '</div><div class="stat-label">' + c.label + '</div></div>';
+  }).join('');
 }
 
-function renderTrichXuat(routes, action) {
-  if (!routes || typeof routes !== 'object') {
-    resultContent.innerHTML = '<p style="color:#999;padding:20px;text-align:center">Không có dữ liệu</p>';
-    return;
+function buildStatCardsTrichXuat(routes, action) {
+  let totalNV = 0;
+  let totalViPham = 0;
+  Object.keys(routes).forEach(function(r) {
+    routes[r].forEach(function(row) {
+      totalNV++;
+      if (action === 'trichXuatV1' && row.viPham) totalViPham++;
+    });
+  });
+  const cards = [
+    { label: 'Tổng lượt nhân viên', value: totalNV, tone: 'neutral' },
+    { label: 'Số tuyến', value: Object.keys(routes).length, tone: 'neutral' }
+  ];
+  if (action === 'trichXuatV1') {
+    cards.push({ label: 'Vi phạm', value: totalViPham, tone: 'danger' });
   }
+  statCardsEl.style.display = 'flex';
+  statCardsEl.innerHTML = cards.map(function(c) {
+    return '<div class="stat-card tone-' + c.tone + '"><div class="stat-value">' + c.value + '</div><div class="stat-label">' + c.label + '</div></div>';
+  }).join('');
+}
+
+// ============ RENDER BẢNG THEO BỘ LỌC HIỆN TẠI ============
+function renderActiveView() {
+  if (!state.lastResult) return;
+  const action = state.lastType;
+  const routes = state.lastResult.routes;
   const routeKeys = Object.keys(routes).sort(function(a, b) { return Number(a) - Number(b); });
-  if (!routeKeys.length) {
-    resultContent.innerHTML = '<p style="color:#999;padding:20px;text-align:center">Không có kết quả</p>';
-    return;
+  const keysToRender = state.view.activeRoute === 'all' ? routeKeys : [state.view.activeRoute];
+
+  if (action === 'soSanhEBMS') {
+    renderSoSanhFiltered(routes, keysToRender);
+  } else {
+    renderTrichXuatFiltered(routes, keysToRender, action);
   }
-  let html = '';
-  for (const r of routeKeys) {
-    const list = routes[r];
-    html += '<h3 style="margin:16px 0 8px;color:#1F3864">🚌 Tuyến ' + r + ' — ' + list.length + ' nhân viên</h3>';
-    html += '<table><thead><tr>';
-    if (action === 'trichXuatV1') {
-      html += '<th>Ngày</th><th>Tuyến</th><th>Giờ đi</th><th>Giờ xuất bến</th><th>Thời gian đo</th><th>Tên</th><th>Chức vụ</th><th>Trạng thái</th><th>Vi phạm</th><th>Người đo</th>';
-    } else {
-      html += '<th>Ngày</th><th>Tuyến</th><th>Tên</th><th>Chức vụ</th><th>Check 1</th><th>Check 2</th>';
-    }
-    html += '</tr></thead><tbody>';
-    for (const row of list) {
-      const cls = row.isAmbiguous ? 'row-ambiguous' : '';
-      html += '<tr class="' + cls + '">';
-      if (action === 'trichXuatV1') {
-        html += '<td>' + row.ngay + '</td><td>' + row.tuyen + '</td><td>' + row.gioDi + '</td>';
-        html += '<td>' + row.gioXuatBen + '</td><td>' + row.thoiGianDo + '</td>';
-        html += '<td style="text-align:left">' + escapeHtml(row.ten) + '</td>';
-        html += '<td>' + row.chucVu + '</td>';
-        html += '<td>' + (row.trangThai ? '✅' : '⬜') + '</td>';
-        html += '<td>' + (row.viPham ? '⚠️' : '⬜') + '</td>';
-        html += '<td>' + escapeHtml(row.nguoiDo) + '</td>';
-      } else {
-        html += '<td>' + row.ngay + '</td><td>' + row.tuyen + '</td>';
-        html += '<td style="text-align:left">' + escapeHtml(row.ten) + '</td>';
-        html += '<td>' + row.chucVu + '</td>';
-        html += '<td>' + (row.check1 ? '✅' : '⬜') + '</td>';
-        html += '<td>' + (row.check2 ? '✅' : '⬜') + '</td>';
-      }
-      html += '</tr>';
-    }
-    html += '</tbody></table>';
-  }
-  resultContent.innerHTML = html;
+  updateLookupMeta();
 }
 
-// ============ EXPORT CSV ============
+function renderSoSanhFiltered(routes, keys) {
+  const searchQ = normalizeSearch(state.view.searchText);
+  const activeFilter = state.view.activeFilter;
+  const htmlParts = [];
+  let shownCount = 0, totalCount = 0;
+
+  keys.forEach(function(r) {
+    const info = routes[r];
+    let rowsHtml = '';
+    info.results.forEach(function(row) {
+      totalCount++;
+      const cat = categoryOf(row.loai);
+      if (activeFilter !== 'all' && cat !== activeFilter) return;
+      if (searchQ) {
+        const haystack = normalizeSearch([
+          row.loai, row.khDi, row.khDen, row.khXe, row.thXe, row.thDi, row.thDen,
+          row.benDau, row.trangThaiEBMS, row.lichChayPC, row.xePC, row.benXuatPhatPC,
+          row.gioDiPC, row.gioDenPC, row.ghi, r
+        ].join(' '));
+        if (haystack.indexOf(searchQ) === -1) return;
+      }
+      shownCount++;
+      const cls = rowClassSoSanh(row.loai);
+      rowsHtml += '<tr class="' + cls + '">' +
+        '<td>' + row.loai + '</td>' +
+        '<td>' + row.khDi + '</td><td>' + row.khDen + '</td><td>' + row.khXe + '</td>' +
+        '<td>' + row.thXe + '</td><td>' + row.thDi + '</td><td>' + row.thDen + '</td>' +
+        '<td>' + row.benDau + '</td><td>' + row.trangThaiEBMS + '</td>' +
+        '<td>' + row.lichChayPC + '</td><td>' + row.xePC + '</td><td>' + row.benXuatPhatPC + '</td>' +
+        '<td>' + row.gioDiPC + '</td><td>' + row.gioDenPC + '</td>' +
+        '<td>' + row.chenhLechDi + '</td><td>' + row.chenhLechDen + '</td><td>' + row.soBen + '</td>' +
+        '<td class="notes">' + escapeHtml(row.ghi) + '</td>' +
+        '</tr>';
+    });
+    if (!rowsHtml) return;
+    htmlParts.push(
+      '<h3 class="route-heading">🚌 Tuyến ' + r + ' — Ngày ' + info.ngayPhancong + '</h3>' +
+      '<table><thead><tr>' +
+      ['Loại','KH Đi','KH Đến','KH Xe','TH Xe','TH Đi','TH Đến','Bến đầu','TT EBMS',
+       'Lịch chạy PC','Xe PC','Bến PC','Giờ đi PC','Giờ đến PC','Lệch Đi','Lệch Về','So bến','Ghi chú']
+        .map(function(c) { return '<th>' + c + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + rowsHtml + '</tbody></table>'
+    );
+  });
+
+  resultContent.innerHTML = htmlParts.length ? htmlParts.join('') :
+    '<p class="empty-hint">Không có dòng nào khớp với bộ lọc hiện tại.</p>';
+
+  state.view.shownCount = shownCount;
+  state.view.totalCount = totalCount;
+}
+
+function renderTrichXuatFiltered(routes, keys, action) {
+  const searchQ = normalizeSearch(state.view.searchText);
+  const htmlParts = [];
+  let shownCount = 0, totalCount = 0;
+
+  keys.forEach(function(r) {
+    const list = routes[r];
+    let rowsHtml = '';
+    list.forEach(function(row) {
+      totalCount++;
+      if (searchQ) {
+        const haystack = normalizeSearch([row.ten, row.chucVu, row.ngay, r, action === 'trichXuatV1' ? row.nguoiDo : ''].join(' '));
+        if (haystack.indexOf(searchQ) === -1) return;
+      }
+      shownCount++;
+      const cls = row.isAmbiguous ? 'row-ambiguous' : '';
+      rowsHtml += '<tr class="' + cls + '">';
+      if (action === 'trichXuatV1') {
+        rowsHtml += '<td>' + row.ngay + '</td><td>' + row.tuyen + '</td><td>' + row.gioDi + '</td>' +
+          '<td>' + row.gioXuatBen + '</td><td>' + row.thoiGianDo + '</td>' +
+          '<td style="text-align:left">' + escapeHtml(row.ten) + '</td>' +
+          '<td>' + row.chucVu + '</td>' +
+          '<td>' + (row.trangThai ? '✅' : '⬜') + '</td>' +
+          '<td>' + (row.viPham ? '⚠️' : '⬜') + '</td>' +
+          '<td>' + escapeHtml(row.nguoiDo) + '</td>';
+      } else {
+        rowsHtml += '<td>' + row.ngay + '</td><td>' + row.tuyen + '</td>' +
+          '<td style="text-align:left">' + escapeHtml(row.ten) + '</td>' +
+          '<td>' + row.chucVu + '</td>' +
+          '<td>' + (row.check1 ? '✅' : '⬜') + '</td>' +
+          '<td>' + (row.check2 ? '✅' : '⬜') + '</td>';
+      }
+      rowsHtml += '</tr>';
+    });
+    if (!rowsHtml) return;
+    const headCols = action === 'trichXuatV1'
+      ? ['Ngày','Tuyến','Giờ đi','Giờ xuất bến','Thời gian đo','Tên','Chức vụ','Trạng thái','Vi phạm','Người đo']
+      : ['Ngày','Tuyến','Tên','Chức vụ','Check 1','Check 2'];
+    htmlParts.push(
+      '<h3 class="route-heading">🚌 Tuyến ' + r + ' — ' + list.length + ' nhân viên</h3>' +
+      '<table><thead><tr>' + headCols.map(function(c) { return '<th>' + c + '</th>'; }).join('') + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>'
+    );
+  });
+
+  resultContent.innerHTML = htmlParts.length ? htmlParts.join('') :
+    '<p class="empty-hint">Không có dòng nào khớp với tìm kiếm.</p>';
+
+  state.view.shownCount = shownCount;
+  state.view.totalCount = totalCount;
+}
+
+// ============ EXPORT CSV (xuất toàn bộ dữ liệu, không phụ thuộc bộ lọc đang xem) ============
 function exportCSV(data, action) {
   const rows = [];
   if (action === 'soSanhEBMS') {
