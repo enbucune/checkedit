@@ -117,7 +117,12 @@ window.onload = function() {
       log('⚠️ Chưa load được Google Sign-In, đợi vài giây rồi thử lại', 'err');
       return;
     }
-    tokenClient.requestAccessToken();
+    log('🔍 DEBUG - Bấm nút đăng nhập, đang mở popup Google...', 'info');
+    try {
+      tokenClient.requestAccessToken();
+    } catch (e) {
+      log('❌ Lỗi khi mở popup: ' + e.message, 'err');
+    }
   });
 
   log('🚀 Web đã sẵn sàng. Bấm "Đăng nhập bằng Google" để bắt đầu.');
@@ -182,10 +187,14 @@ function setupOtherListeners() {
 
 async function fetchUserInfo() {
   try {
+    log('🔍 DEBUG - Gọi userinfo với token dài: ' + (state.accessToken ? state.accessToken.length : 'KHÔNG CÓ TOKEN'), 'info');
     const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { 'Authorization': 'Bearer ' + state.accessToken }
     });
-    if (!res.ok) throw new Error('Không lấy được thông tin user');
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error('HTTP ' + res.status + ' - ' + errBody);
+    }
     const info = await res.json();
     state.user = info;
     showLoggedIn(info);
