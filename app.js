@@ -27,6 +27,7 @@ let loginNotice, mainContent, userInfo, userAvatar, userName;
 let btnLogout, btnGoogleLogin;
 let resultsWorkspaceEl, noDataYetEl, lookupBarEl, searchInputEl, lookupMetaEl;
 let statCardsEl, routeTabsEl, filterChipsEl;
+let inputNgayDo, inputNguoiDo;
 
 // ============ LOG ============
 function log(msg, type) {
@@ -81,6 +82,10 @@ window.onload = function() {
   statCardsEl = document.getElementById('statCards');
   routeTabsEl = document.getElementById('routeTabs');
   filterChipsEl = document.getElementById('filterChips');
+  inputNgayDo = document.getElementById('inputNgayDo');
+  inputNguoiDo = document.getElementById('inputNguoiDo');
+
+  inputNgayDo.value = todayInputValue();
 
   setupOtherListeners();
 
@@ -216,6 +221,26 @@ function normalizeSearch(str) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd');
+}
+
+// ============ NGÀY GHI NHẬN ============
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+// yyyy-mm-dd (giá trị input[type=date] mặc định là hôm nay)
+function todayInputValue() {
+  const d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+
+// yyyy-mm-dd -> dd/MM/yyyy (định dạng hiển thị/khớp dữ liệu, vd 25/09/2026)
+function formatDateVN(yyyyMmDd) {
+  const parts = String(yyyyMmDd).split('-');
+  return parts[2] + '/' + parts[1] + '/' + parts[0];
+}
+
+function todayVN() {
+  const d = new Date();
+  return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
 }
 
 // ============ JSONP ============
@@ -374,6 +399,17 @@ async function runTask(action) {
     const params = new URLSearchParams();
     params.append('action', action);
     params.append('fileIds', JSON.stringify(readyFiles.map(function(f) { return f.fileId; })));
+
+    // Ngày ghi nhận: để trống thì lấy ngày hôm nay
+    const ngayVal = inputNgayDo.value ? formatDateVN(inputNgayDo.value) : todayVN();
+    params.append('ngayDo', ngayVal);
+
+    // Người đo: mặc định "Nguyễn Hoài Nam", cho phép gõ tay để đổi (chỉ dùng ở v1)
+    if (action === 'trichXuatV1') {
+      const nguoiDoVal = (inputNguoiDo.value || '').trim() || 'Nguyễn Hoài Nam';
+      params.append('nguoiDo', nguoiDoVal);
+    }
+
     const data = await jsonpRequest(params, 180000);
     if (!data.ok) throw new Error(data.error || 'Lỗi không xác định');
     log('✅ ' + taskName + ' xong!', 'ok');
