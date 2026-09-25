@@ -93,7 +93,7 @@ window.onload = function() {
     log('⚠️ Không load được Google Sign-In. Đợi vài giây rồi refresh trang.', 'err');
     return;
   }
-    tokenClient = google.accounts.oauth2.initTokenClient({
+  tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback: function(resp) {
