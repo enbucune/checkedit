@@ -93,14 +93,20 @@ window.onload = function() {
     log('⚠️ Không load được Google Sign-In. Đợi vài giây rồi refresh trang.', 'err');
     return;
   }
-  tokenClient = google.accounts.oauth2.initTokenClient({
+    tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback: function(resp) {
+      log('🔍 DEBUG - Full response: ' + JSON.stringify(resp), 'info');
       if (resp.error) {
-        log('❌ Lỗi đăng nhập: ' + resp.error, 'err');
+        log('❌ Lỗi đăng nhập: ' + resp.error + ' | ' + (resp.error_description || ''), 'err');
         return;
       }
+      if (!resp.access_token) {
+        log('❌ Không nhận được access_token từ Google (rỗng/undefined)', 'err');
+        return;
+      }
+      log('✅ Nhận token OK, độ dài: ' + resp.access_token.length, 'ok');
       state.accessToken = resp.access_token;
       fetchUserInfo();
     }
