@@ -112,6 +112,24 @@ body {
 .file-item.done { background: rgba(94,209,141,.14); }
 .file-item.error { background: rgba(240,110,110,.14); }
 
+/* Ô nhập ngày ghi nhận / người đo */
+.field-group { display: flex; flex-direction: column; gap: 4px; }
+.field-label { font-size: 11.5px; opacity: .7; }
+.field-input {
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  color: #EAF0FB;
+  font-family: inherit;
+  outline: none;
+  color-scheme: dark;
+}
+.field-input:focus { border-color: var(--accent); background: rgba(255,255,255,.1); }
+.field-input::placeholder { color: rgba(255,255,255,.35); }
+.field-hint { font-size: 10.5px; opacity: .5; line-height: 1.4; }
+
 /* Task list */
 .task-list { display: flex; flex-direction: column; gap: 8px; }
 .task-btn {
