@@ -3,95 +3,130 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Web xử lý công việc</title>
+<title>Tra cứu dữ liệu tuyến</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
-<header>
-  <div class="header-top">
-    <div>
-      <h1>🚌 Web xử lý công việc</h1>
-      <p class="sub">Kéo thả file Excel vào khung, chọn tác vụ cần chạy</p>
+<div class="app-shell">
+
+  <aside class="rail" id="rail">
+    <div class="rail-brand">
+      <span class="rail-brand-mark">🚌</span>
+      <div>
+        <div class="rail-brand-title">Tra cứu dữ liệu tuyến</div>
+        <div class="rail-brand-sub">Đối chiếu EBMS &amp; phân công</div>
+      </div>
     </div>
-    <div id="authArea" class="auth-area">
+
+    <div id="authArea" class="rail-auth">
       <button id="btnGoogleLogin" class="btn btn-login">
-        <img src="https://www.google.com/favicon.ico" style="width:16px;height:16px;vertical-align:middle;margin-right:6px">
+        <img src="https://www.google.com/favicon.ico" alt="" style="width:16px;height:16px;vertical-align:middle;margin-right:6px">
         Đăng nhập bằng Google
       </button>
       <div id="userInfo" class="user-info" style="display:none">
         <img id="userAvatar" class="user-avatar" alt="">
-        <span id="userName" class="user-name"></span>
-        <button id="btnLogout" class="btn btn-ghost btn-sm">Đăng xuất</button>
-      </div>
-    </div>
-  </div>
-</header>
-
-<main>
-
-  <section class="card" id="loginNotice">
-    <h2>🔐 Cần đăng nhập</h2>
-    <p style="color:#666;font-size:14px">Bấm <strong>"Đăng nhập bằng Google"</strong> ở góc phải trên để bắt đầu. Web cần quyền truy cập Drive để upload file Excel vào kho dữ liệu.</p>
-  </section>
-
-  <div id="mainContent" style="display:none">
-
-    <section class="card">
-      <h2>📁 Kho dữ liệu</h2>
-      <div id="dropzone" class="dropzone">
-        <div class="dz-icon">📥</div>
-        <div class="dz-text">Kéo thả file Excel vào đây<br><span>hoặc bấm để chọn file</span></div>
-        <input type="file" id="fileInput" accept=".xlsx,.xls" multiple hidden>
-      </div>
-      <div id="fileList" class="file-list"></div>
-      <div class="actions">
-        <button id="btnClearFiles" class="btn btn-ghost">🗑️ Xóa danh sách file</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>⚡ Tác vụ</h2>
-      <div class="task-grid">
-        <button class="task-btn" data-action="soSanhEBMS">
-          <div class="task-icon">📊</div>
-          <div class="task-title">So sánh EBMS</div>
-          <div class="task-desc">Đối chiếu phân công với EBMS</div>
-        </button>
-        <button class="task-btn" data-action="trichXuatV1">
-          <div class="task-icon">👥</div>
-          <div class="task-title">Trích xuất NV v1</div>
-          <div class="task-desc">Ngày/Tuyến/Giờ đi/Tên/CV</div>
-        </button>
-        <button class="task-btn" data-action="trichXuatV2">
-          <div class="task-icon">📋</div>
-          <div class="task-title">Trích xuất NV v2</div>
-          <div class="task-desc">Ngày/Tuyến/Tên/CV/Check</div>
-        </button>
-      </div>
-    </section>
-
-    <section class="card" id="resultCard" style="display:none">
-      <div class="result-head">
-        <h2 id="resultTitle">📊 Kết quả</h2>
-        <div class="result-actions">
-          <button id="btnExportCSV" class="btn btn-ghost">⬇️ Xuất CSV</button>
-          <button id="btnCloseResult" class="btn btn-ghost">✖️ Đóng</button>
+        <div class="user-meta">
+          <span id="userName" class="user-name"></span>
+          <button id="btnLogout" class="link-btn">Đăng xuất</button>
         </div>
       </div>
-      <div id="summary" class="summary"></div>
-      <div id="resultContent" class="result-content"></div>
-    </section>
+    </div>
 
-    <section class="card">
-      <h2>📜 Nhật ký</h2>
-      <div id="log" class="log"></div>
-    </section>
+    <div id="mainContent" class="rail-body">
+      <section class="rail-section">
+        <h2 class="rail-heading">Dữ liệu nguồn</h2>
+        <div id="dropzone" class="dropzone">
+          <div class="dz-icon">📥</div>
+          <div class="dz-text">Kéo thả file Excel vào đây<br><span>hoặc bấm để chọn file</span></div>
+          <input type="file" id="fileInput" accept=".xlsx,.xls" multiple hidden>
+        </div>
+        <div id="fileList" class="file-list"></div>
+        <button id="btnClearFiles" class="link-btn link-btn-danger">Xóa danh sách file</button>
+      </section>
 
-  </div>
+      <section class="rail-section">
+        <h2 class="rail-heading">Tác vụ</h2>
+        <div class="task-list">
+          <button class="task-btn" data-action="soSanhEBMS">
+            <span class="task-icon">📊</span>
+            <span>
+              <span class="task-title">So sánh EBMS</span>
+              <span class="task-desc">Đối chiếu phân công với EBMS</span>
+            </span>
+          </button>
+          <button class="task-btn" data-action="trichXuatV1">
+            <span class="task-icon">👥</span>
+            <span>
+              <span class="task-title">Trích xuất NV v1</span>
+              <span class="task-desc">Ngày · Tuyến · Giờ đi · Tên · CV</span>
+            </span>
+          </button>
+          <button class="task-btn" data-action="trichXuatV2">
+            <span class="task-icon">📋</span>
+            <span>
+              <span class="task-title">Trích xuất NV v2</span>
+              <span class="task-desc">Ngày · Tuyến · Tên · CV · Check</span>
+            </span>
+          </button>
+        </div>
+      </section>
 
-</main>
+      <section class="rail-section rail-section-log">
+        <h2 class="rail-heading">Nhật ký</h2>
+        <div id="log" class="log"></div>
+      </section>
+    </div>
+  </aside>
+
+  <main class="workspace">
+
+    <div id="loginNotice" class="empty-state">
+      <div class="empty-icon">🔐</div>
+      <h2>Đăng nhập để bắt đầu tra cứu</h2>
+      <p>Đăng nhập Google ở thanh bên trái để tải dữ liệu và chạy tác vụ.</p>
+    </div>
+
+    <div id="resultsWorkspace" style="display:none">
+
+      <div id="noDataYet" class="empty-state">
+        <div class="empty-icon">📂</div>
+        <h2>Chưa có dữ liệu để tra cứu</h2>
+        <p>Tải file Excel lên và chạy một tác vụ ở thanh bên trái.</p>
+      </div>
+
+      <div class="lookup-bar" style="display:none">
+        <div class="search-field">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" placeholder="Tìm theo tuyến, tên, biển số, ghi chú...">
+        </div>
+        <div class="lookup-meta" id="lookupMeta"></div>
+      </div>
+
+      <div id="statCards" class="stat-cards" style="display:none"></div>
+
+      <div id="routeTabs" class="route-tabs" style="display:none"></div>
+
+      <div id="filterChips" class="filter-chips" style="display:none"></div>
+
+      <section class="card result-card" id="resultCard" style="display:none">
+        <div class="result-head">
+          <h2 id="resultTitle">Kết quả</h2>
+          <div class="result-actions">
+            <button id="btnExportCSV" class="btn btn-ghost">⬇️ Xuất CSV</button>
+            <button id="btnCloseResult" class="btn btn-ghost">✖️ Đóng</button>
+          </div>
+        </div>
+        <div id="summary" class="summary"></div>
+        <div id="resultContent" class="result-content"></div>
+      </section>
+
+    </div>
+
+  </main>
+
+</div>
 
 <div id="loading" class="loading" style="display:none">
   <div class="spinner"></div>
