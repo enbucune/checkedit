@@ -316,6 +316,7 @@ body {
 
 .route-heading { margin: 20px 0 8px; color: var(--ink-text); font-size: 15px; font-weight: 700; }
 .route-heading:first-child { margin-top: 0; }
+.route-heading-danger { color: var(--danger); }
 .empty-hint { color: var(--muted); padding: 30px; text-align: center; font-size: 13px; }
 
 .result-content { overflow-x: auto; }
@@ -348,6 +349,12 @@ tr.row-plan td { background: var(--plan-bg); }
 tr.row-miss-pc td { background: var(--danger-bg); }
 tr.row-miss-ebms td { background: var(--miss-ebms-bg); }
 tr.row-ambiguous td { background: #FFF2CC; }
+
+/* Cờ cảnh báo theo ô (Tổng hợp Xe): tô đậm riêng ô giờ điều xe/giờ đi/giờ về bến
+   bị vướng ngưỡng cảnh báo, độc lập với màu nền cả dòng ở trên. */
+td.flag-do { color: var(--danger); font-weight: 700; }
+td.flag-vang { color: var(--warn); font-weight: 700; }
+td.flag-xanh { color: var(--accent-strong); font-weight: 700; }
 
 /* ============ NÚT DÙNG CHUNG ============ */
 .btn {
