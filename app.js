@@ -28,6 +28,7 @@ let btnLogout, btnGoogleLogin;
 let resultsWorkspaceEl, noDataYetEl, lookupBarEl, searchInputEl, lookupMetaEl;
 let statCardsEl, routeTabsEl, filterChipsEl;
 let inputNgayDo, inputNguoiDo;
+let copyBarEl;
 
 // ============ LOG ============
 function log(msg, type) {
@@ -84,6 +85,7 @@ window.onload = function() {
   filterChipsEl = document.getElementById('filterChips');
   inputNgayDo = document.getElementById('inputNgayDo');
   inputNguoiDo = document.getElementById('inputNguoiDo');
+  copyBarEl = document.getElementById('copyBar');
 
   inputNgayDo.value = todayInputValue();
 
@@ -223,6 +225,7 @@ function showEmptyLookupState() {
   routeTabsEl.style.display = 'none';
   filterChipsEl.style.display = 'none';
   resultCard.style.display = 'none';
+  copyBarEl.style.display = 'none';
 }
 
 function updateLookupMeta() {
@@ -556,6 +559,8 @@ function renderResult(data, action) {
 
   state.view = { activeRoute: 'all', activeFilter: 'all', searchText: '', shownCount: 0, totalCount: 0 };
   searchInputEl.value = '';
+  copyBarEl.style.display = 'none';
+  copyBarEl.innerHTML = '';
 
   if (action === 'soSanhEBMS') {
     resultTitle.textContent = '📊 Kết quả so sánh EBMS';
@@ -573,6 +578,7 @@ function renderResult(data, action) {
       : '📋 Kết quả trích xuất NV v2';
     buildStatCardsTrichXuat(data.routes, action);
     buildRouteTabs(data.routes);
+    if (action === 'trichXuatV1') buildCopyBarV1(data.routes);
     filterChipsEl.style.display = 'none';
     filterChipsEl.innerHTML = '';
   }
@@ -960,6 +966,66 @@ function renderTongHopXeFiltered(routes, keys) {
 
   state.view.shownCount = shownCount;
   state.view.totalCount = totalCount;
+}
+
+// ============ COPY THEO TUYẾN (NV v1) ============
+function buildCopyBarV1(routes) {
+  const keys = Object.keys(routes).sort(function(a, b) { return Number(a) - Number(b); });
+  copyBarEl.innerHTML = keys.map(function(r) {
+    return '<button class="btn btn-ghost btn-copy" data-route="' + r + '">📋 Copy tuyến ' + r +
+           ' (' + routes[r].length + ')</button>';
+  }).join('');
+  copyBarEl.style.display = 'flex';
+  copyBarEl.querySelectorAll('.btn-copy').forEach(function(btn) {
+    btn.addEventListener('click', function() { copyRouteV1(btn.dataset.route, btn); });
+  });
+}
+
+function copyRouteV1(r, btn) {
+  const list = (state.lastResult && state.lastResult.routes[r]) || [];
+  const clean = function(v) { return String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' '); };
+  const text = list.map(function(row) {
+    return [
+      row.ngay, row.tuyen, row.gioDi, row.gioXuatBen, row.thoiGianDo,
+      row.ten, row.chucVu,
+      row.trangThai ? 'TRUE' : 'FALSE',
+      row.viPham ? 'TRUE' : 'FALSE',
+      row.nguoiDo
+    ].map(clean).join('\t');
+  }).join('\n');
+
+  copyToClipboard(text).then(function() {
+    const old = btn.textContent;
+    btn.textContent = '✅ Đã copy tuyến ' + r;
+    btn.classList.add('btn-copied');
+    log('📋 Đã copy tuyến ' + r + ' (' + list.length + ' dòng)', 'ok');
+    setTimeout(function() {
+      btn.textContent = old;
+      btn.classList.remove('btn-copied');
+    }, 1500);
+  }).catch(function(err) {
+    log('❌ Không copy được: ' + err.message, 'err');
+  });
+}
+
+function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise(function(resolve, reject) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy') ? resolve() : reject(new Error('execCommand thất bại'));
+    } catch (e) {
+      reject(e);
+    }
+    document.body.removeChild(ta);
+  });
 }
 
 // ============ EXPORT CSV (xuất toàn bộ dữ liệu, không phụ thuộc bộ lọc đang xem) ============
