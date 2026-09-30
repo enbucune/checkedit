@@ -43,6 +43,7 @@
           <input type="file" id="fileInput" accept=".xlsx,.xls" multiple hidden>
         </div>
         <div id="fileList" class="file-list"></div>
+        <p class="field-hint">File trên Drive tự xóa sau 5 giờ. Quá hạn thì upload lại.</p>
         <button id="btnClearFiles" class="link-btn link-btn-danger">Xóa danh sách file</button>
       </section>
 
@@ -56,7 +57,7 @@
           <label class="field-label" for="inputNguoiDo">Người đo</label>
           <input type="text" id="inputNguoiDo" class="field-input" value="Nguyễn Hoài Nam" placeholder="Nhập tên người đo">
         </div>
-        <p class="field-hint">Áp dụng cho Trích xuất NV v1 / v2. Để trống ngày sẽ lấy ngày hôm nay.</p>
+        <p class="field-hint">Người đo chỉ dùng cho Trích xuất NV v1. Ngày ghi nhận dùng cho cả v1 và v2, để trống sẽ lấy hôm nay.</p>
       </section>
 
       <section class="rail-section">
@@ -80,7 +81,7 @@
             <span class="task-icon">📋</span>
             <span>
               <span class="task-title">Trích xuất NV v2</span>
-              <span class="task-desc">Ngày · Tuyến · Tên · CV · Check</span>
+              <span class="task-desc">Ngày · Tuyến · Tên · CV</span>
             </span>
           </button>
           <button class="task-btn" data-action="tongHopXe">
@@ -125,9 +126,7 @@
       </div>
 
       <div id="statCards" class="stat-cards" style="display:none"></div>
-
       <div id="routeTabs" class="route-tabs" style="display:none"></div>
-
       <div id="filterChips" class="filter-chips" style="display:none"></div>
 
       <section class="card result-card" id="resultCard" style="display:none">
